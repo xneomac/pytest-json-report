@@ -13,7 +13,6 @@ from . import serialize
 
 
 class JSONReportBase:
-
     def __init__(self, config=None):
         self._config = config
         self._logger = logging.getLogger()
@@ -23,12 +22,12 @@ class JSONReportBase:
         # initialized without a config.
         if self._config is None:
             self._config = config
-        if not hasattr(config, '_json_report'):
+        if not hasattr(config, "_json_report"):
             self._config._json_report = self
         # If the user sets --tb=no, always omit the traceback from the report
-        if self._config.option.tbstyle == 'no' and \
-           not self._must_omit('traceback'):
-            self._config.option.json_report_omit.append('traceback')
+        # if self._config.option.tbstyle == 'no' and \
+        #    not self._must_omit('traceback'):
+        #     self._config.option.json_report_omit.append('traceback')
 
     def pytest_addhooks(self, pluginmanager):
         pluginmanager.add_hookspecs(Hooks)
@@ -47,48 +46,52 @@ class JSONReportBase:
             yield
         finally:
             self._logger.removeHandler(handler)
-        item._json_report_extra[when]['log'] = handler.records
+        item._json_report_extra[when]["log"] = handler.records
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_setup(self, item):
-        item._json_report_extra['setup'] = {}
-        if self._must_omit('log'):
+        item._json_report_extra["setup"] = {}
+        if self._must_omit("log"):
             yield
         else:
-            with self._capture_log(item, 'setup'):
+            with self._capture_log(item, "setup"):
                 yield
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_call(self, item):
-        item._json_report_extra['call'] = {}
-        if self._must_omit('log'):
+        item._json_report_extra["call"] = {}
+        if self._must_omit("log"):
             yield
         else:
-            with self._capture_log(item, 'call'):
+            with self._capture_log(item, "call"):
                 yield
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_teardown(self, item):
-        item._json_report_extra['teardown'] = {}
-        if self._must_omit('log'):
+        item._json_report_extra["teardown"] = {}
+        if self._must_omit("log"):
             yield
         else:
-            with self._capture_log(item, 'teardown'):
+            with self._capture_log(item, "teardown"):
                 yield
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_makereport(self, item, call):
         # Hook runtest_makereport to access the item *and* the report
         report = (yield).get_result()
-        if not self._must_omit('streams'):
-            streams = {key: val for when_, key, val in item._report_sections if
-                       when_ == report.when and key in ['stdout', 'stderr']}
+        if not self._must_omit("streams"):
+            streams = {
+                key: val
+                for when_, key, val in item._report_sections
+                if when_ == report.when and key in ["stdout", "stderr"]
+            }
             item._json_report_extra[call.when].update(streams)
-        for dict_ in self._config.hook.pytest_json_runtest_metadata(item=item,
-                                                                    call=call):
+        for dict_ in self._config.hook.pytest_json_runtest_metadata(
+            item=item, call=call
+        ):
             if not dict_:
                 continue
-            item._json_report_extra.setdefault('metadata', {}).update(dict_)
+            item._json_report_extra.setdefault("metadata", {}).update(dict_)
         self._validate_metadata(item)
         # Attach the JSON details to the report. If this is an xdist worker,
         # the details will be serialized and relayed with the other attributes
@@ -99,14 +102,15 @@ class JSONReportBase:
     def _validate_metadata(item):
         """Ensure that `item` has JSON-serializable metadata, otherwise delete
         it."""
-        if 'metadata' not in item._json_report_extra:
+        if "metadata" not in item._json_report_extra:
             return
         try:
-            json.dumps(item._json_report_extra['metadata'])
+            json.dumps(item._json_report_extra["metadata"])
         except (TypeError, OverflowError):
             warnings.warn(
-                'Metadata of {} is not JSON-serializable.'.format(item.nodeid))
-            del item._json_report_extra['metadata']
+                "Metadata of {} is not JSON-serializable.".format(item.nodeid)
+            )
+            del item._json_report_extra["metadata"]
 
     def _must_omit(self, key):
         return key in self._config.option.json_report_omit
@@ -129,7 +133,7 @@ class JSONReport(JSONReportBase):
         self._start_time = time.time()
 
     def pytest_collectreport(self, report):
-        if not self._must_omit('collectors'):
+        if not self._must_omit("collectors"):
             self._json_collectors.append(serialize.make_collector(report))
 
     def pytest_runtest_logreport(self, report):
@@ -141,25 +145,29 @@ class JSONReport(JSONReportBase):
                 nodeid,
                 # report.keywords is a dict (for legacy reasons), but we just
                 # need the keys
-                None if self._must_omit('keywords') else list(report.keywords),
+                None
+                if self._must_omit("keywords")
+                else list(report.keywords),
                 report.location,
             )
             self._json_tests[nodeid] = json_testitem
-        metadata = report._json_report_extra.get('metadata')
+        metadata = report._json_report_extra.get("metadata")
         if metadata:
-            json_testitem['metadata'] = metadata
+            json_testitem["metadata"] = metadata
         # Update total test outcome, if necessary. The total outcome can be
         # different from the outcome of the setup/call/teardown stage.
         outcome = self._config.hook.pytest_report_teststatus(
-            report=report, config=self._config)[0]
-        if outcome not in ['passed', '']:
-            json_testitem['outcome'] = outcome
-        json_testitem[report.when] = \
-            self._config.hook.pytest_json_runtest_stage(report=report)
+            report=report, config=self._config
+        )[0]
+        if outcome not in ["passed", ""]:
+            json_testitem["outcome"] = outcome
+        json_testitem[
+            report.when
+        ] = self._config.hook.pytest_json_runtest_stage(report=report)
 
     @pytest.hookimpl(trylast=True)
     def pytest_json_runtest_stage(self, report):
-        if self._must_omit('traceback'):
+        if self._must_omit("traceback"):
             traceback = None
         else:
             try:
@@ -169,9 +177,9 @@ class JSONReport(JSONReportBase):
         stage_details = report._json_report_extra[report.when]
         return serialize.make_teststage(
             report,
-            stage_details.get('stdout'),
-            stage_details.get('stderr'),
-            stage_details.get('log'),
+            stage_details.get("stdout"),
+            stage_details.get("stderr"),
+            stage_details.get("log"),
             traceback,
         )
 
@@ -182,15 +190,15 @@ class JSONReport(JSONReportBase):
             duration=time.time() - self._start_time,
             exitcode=session.exitstatus,
             root=str(session.fspath),
-            environment=getattr(self._config, '_metadata', {}),
+            environment=getattr(self._config, "_metadata", {}),
             summary=serialize.make_summary(self._json_tests),
         )
         if not self._config.option.json_report_summary:
             if self._json_collectors:
-                json_report['collectors'] = self._json_collectors
-            json_report['tests'] = list(self._json_tests.values())
+                json_report["collectors"] = self._json_collectors
+            json_report["tests"] = list(self._json_tests.values())
             if self._json_warnings:
-                json_report['warnings'] = self._json_warnings
+                json_report["warnings"] = self._json_warnings
 
         self._config.hook.pytest_json_modifyreport(json_report=json_report)
         # After the session has finished, other scripts may want to use report
@@ -200,13 +208,13 @@ class JSONReport(JSONReportBase):
         if path:
             self.save_report(path)
         else:
-            self._terminal_summary.append('no JSON report written.')
+            self._terminal_summary.append("no JSON report written.")
 
     def save_report(self, path):
         """Save the JSON report to `path`."""
         json_report = self.report
         if json_report is None:
-            warnings.warn('No report has been created yet. Nothing saved.')
+            warnings.warn("No report has been created yet. Nothing saved.")
             return
         # Create path if it doesn't exist
         dirname = os.path.dirname(path)
@@ -216,9 +224,10 @@ class JSONReport(JSONReportBase):
             # Mimick FileExistsError for py2.7 compatibility
             except OSError as e:
                 import errno
+
                 if e.errno != errno.EEXIST:
                     raise
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(
                 json_report,
                 f,
@@ -226,19 +235,21 @@ class JSONReport(JSONReportBase):
                 indent=self._config.option.json_report_indent,
             )
             self._terminal_summary.append(
-                'JSON report written to: %s (%d bytes)' % (path, f.tell()))
+                "JSON report written to: %s (%d bytes)" % (path, f.tell())
+            )
 
     def pytest_warning_captured(self, warning_message, when):
         if self._config is None:
             # If pytest is invoked directly from code, it may try to capture
             # warnings before the config is set.
             return
-        if not self._must_omit('warnings'):
+        if not self._must_omit("warnings"):
             self._json_warnings.append(
-                serialize.make_warning(warning_message, when))
+                serialize.make_warning(warning_message, when)
+            )
 
     def pytest_terminal_summary(self, terminalreporter):
-        terminalreporter.write_sep('-', 'JSON report')
+        terminalreporter.write_sep("-", "JSON report")
         for line in self._terminal_summary:
             terminalreporter.write_line(line)
 
@@ -249,22 +260,20 @@ class JSONReportWorker(JSONReportBase):
 
 
 class LoggingHandler(logging.Handler):
-
     def __init__(self):
         super(LoggingHandler, self).__init__()
         self.records = []
 
     def emit(self, record):
         d = dict(record.__dict__)
-        d['msg'] = record.getMessage()
-        d['args'] = None
-        d['exc_info'] = None
-        d.pop('message', None)
+        d["msg"] = record.getMessage()
+        d["args"] = None
+        d["exc_info"] = None
+        d.pop("message", None)
         self.records.append(d)
 
 
 class Hooks:
-
     def pytest_json_modifyreport(self, json_report):
         """Called after building JSON report and before saving it.
 
@@ -293,7 +302,7 @@ class Hooks:
 def json_metadata(request):
     """Fixture to add metadata to the current test item."""
     try:
-        return request.node._json_report_extra.setdefault('metadata', {})
+        return request.node._json_report_extra.setdefault("metadata", {})
     except AttributeError:
         if not request.config.option.json_report:
             # The user didn't request a JSON report, so the plugin didn't
@@ -304,33 +313,46 @@ def json_metadata(request):
 
 
 def pytest_addoption(parser):
-    group = parser.getgroup('jsonreport', 'reporting test results as JSON')
+    group = parser.getgroup("jsonreport", "reporting test results as JSON")
     group.addoption(
-        '--json-report', default=False, action='store_true',
-        help='create JSON report')
+        "--json-report",
+        default=False,
+        action="store_true",
+        help="create JSON report",
+    )
     group.addoption(
-        '--json-report-file', default='.report.json',
+        "--json-report-file",
+        default=".report.json",
         # The case-insensitive string "none" will make the value None
-        type=lambda x: None if x.lower() == 'none' else x,
+        type=lambda x: None if x.lower() == "none" else x,
         help='target path to save JSON report (use "none" to not save the '
-        'report)')
+        "report)",
+    )
     group.addoption(
-        '--json-report-omit', default=[], nargs='+', help='list of fields to '
-        'omit in the report (choose from: collectors, log, traceback, '
-        'streams, warnings, keywords)')
+        "--json-report-omit",
+        default=[],
+        nargs="+",
+        help="list of fields to "
+        "omit in the report (choose from: collectors, log, traceback, "
+        "streams, warnings, keywords)",
+    )
     group.addoption(
-        '--json-report-summary', default=False,
-        action='store_true', help='only create a summary without per-test '
-        'details')
+        "--json-report-summary",
+        default=False,
+        action="store_true",
+        help="only create a summary without per-test " "details",
+    )
     group.addoption(
-        '--json-report-indent', type=int, help='pretty-print JSON with '
-        'specified indentation level')
+        "--json-report-indent",
+        type=int,
+        help="pretty-print JSON with " "specified indentation level",
+    )
 
 
 def pytest_configure(config):
     if not config.option.json_report:
         return
-    if hasattr(config, 'workerinput'):
+    if hasattr(config, "workerinput"):
         Plugin = JSONReportWorker
     else:
         Plugin = JSONReport
@@ -340,7 +362,7 @@ def pytest_configure(config):
 
 
 def pytest_unconfigure(config):
-    plugin = getattr(config, '_json_report', None)
+    plugin = getattr(config, "_json_report", None)
     if plugin is not None:
         del config._json_report
         config.pluginmanager.unregister(plugin)
